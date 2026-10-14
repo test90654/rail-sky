@@ -1,0 +1,23 @@
+name: rail-sky-notify
+
+on:
+  schedule:
+    # 毎日 20:47 JST（= 11:47 UTC）。気象庁モデルの夕方更新後に実行
+    - cron: "47 11 * * *"
+  workflow_dispatch: {}   # Actions 画面から手動実行も可
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 予報を計算して通知
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: python notify.py

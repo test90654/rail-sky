@@ -1,0 +1,11 @@
+{
+  "weekdays": [4, 5],
+  "_weekdays_note": "0=日 1=月 2=火 3=水 4=木 5=金 6=土",
+  "locations": [
+    { "id": "hitachi", "name": "日立", "lat": 36.5906, "lon": 140.6560, "note": "常磐線 日立駅周辺" },
+    { "id": "iwaki",   "name": "いわき", "lat": 37.0587, "lon": 140.8936, "note": "常磐線 いわき駅周辺" }
+  ],
+  "forecast_days": 11,
+  "dashboard_url": "",
+  "scw_url": "https://supercweather.com/"
+}

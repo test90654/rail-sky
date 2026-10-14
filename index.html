@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>休日の撮影空模様</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=DotGothic16&display=swap">
+<style>
+/* 発車標の帯を見出しに、各休日を「時刻表の行」として並べる */
+:root{
+  --bg:#f3f5f8; --panel:#ffffff; --fg:#17202b; --muted:#5d6b7a; --line:#d7dee6;
+  --accent:#0a5cad;            /* 常磐線ブルー寄り */
+  --board:#10161d; --board-fg:#ffb23e;
+  --sun:#f2b705; --partly:#f7dc7a; --cloudy:#b9c4cf; --overcast:#7f8c99; --drizzle:#7fb2e0; --rain:#2f6fb7;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-board:"DotGothic16","BIZ UDPGothic",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f141a; --panel:#18202a; --fg:#e6ecf2; --muted:#93a1b0; --line:#2a3542;
+  --accent:#5aa2ec; --board:#05080b; --board-fg:#ffb23e;
+  --partly:#c9ad4a; --cloudy:#5d6a77; --overcast:#3d4752; --drizzle:#4f86ba; --rain:#2c5f9c;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html{padding-block:env(safe-area-inset-top,0) env(safe-area-inset-bottom,0)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:960px;margin:0 auto;padding-block:20px 48px;display:grid;gap:20px}
+header.board{background:var(--board);color:var(--board-fg);border-radius:6px;padding:14px 18px;
+  display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 20px}
+header.board h1{margin:0;font:400 1.6rem/1.2 var(--f-board);letter-spacing:.08em}
+header.board .meta{font:400 .85rem var(--f-board);color:#d8d0bf;letter-spacing:.04em}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.82rem;color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:4px}
+.links{font-size:.85rem;color:var(--muted)}
+.links a{color:var(--accent)}
+section.day{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.day h2{margin:0;padding:10px 16px;font-size:1.1rem;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
+.day h2 small{color:var(--muted);font-weight:400;font-size:.8rem}
+.loc{padding:12px 16px;display:grid;gap:8px;border-top:1px solid var(--line)}
+.loc:first-of-type{border-top:0}
+.loc-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.mark{font:700 1.5rem/1 var(--f-body);width:1.6em;text-align:center}
+.mark.good{color:#c98a00}.mark.ok{color:var(--accent)}.mark.meh{color:var(--muted)}.mark.bad{color:var(--rain)}
+.loc-name{font-weight:700;font-size:1.05rem}
+.verdict{font-size:.95rem}
+.chip{font-size:.78rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums}
+.chip.warn{border-color:#d9822b;color:#d9822b}
+.strip-scroll{overflow-x:auto}
+.strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(34px,1fr);gap:2px;min-width:max-content}
+.cell{display:grid;gap:2px;text-align:center;font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums;cursor:pointer;
+  background:none;border:0;padding:0;font-family:inherit}
+.cell b{display:block;height:26px;border-radius:3px}
+.cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.c-sun{background:var(--sun)}.c-partly{background:var(--partly)}.c-cloudy{background:var(--cloudy)}
+.c-overcast{background:var(--overcast)}.c-drizzle{background:var(--drizzle)}.c-rain{background:var(--rain)}
+details{font-size:.82rem}
+details summary{cursor:pointer;color:var(--accent)}
+table{border-collapse:collapse;font-variant-numeric:tabular-nums;margin-top:6px}
+th,td{padding:3px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:400}
+.empty,.err{padding:16px;color:var(--muted)}
+.err{color:#c0392b}
+footer{font-size:.78rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="board">
+    <h1>休日の撮影空模様</h1>
+    <span class="meta" id="meta">予報を取得しています…</span>
+  </header>
+
+  <div class="legend" aria-label="凡例">
+    <span><i class="c-sun"></i>晴れ（順光◎）</span>
+    <span><i class="c-partly"></i>晴れ間あり</span>
+    <span><i class="c-cloudy"></i>薄日・曇り</span>
+    <span><i class="c-overcast"></i>曇天</span>
+    <span><i class="c-drizzle"></i>小雨</span>
+    <span><i class="c-rain"></i>雨</span>
+  </div>
+
+  <div class="links" id="links"></div>
+  <main id="days" style="display:grid;gap:16px"></main>
+
+  <footer>
+    気象庁モデル（MSM/GSM, Open-Meteo経由）の時間別予報から判定。日の出〜日の入りの時間帯のみ表示。
+    実効雲量＝低層雲を最重視し、中層雲を7割・上層雲（巻雲）を3割の重みで合成したもの。最終確認はSCWの雲量予報で。
+  </footer>
+</div>
+
+<script>
+const DEFAULT_CONFIG = {
+  weekdays:[4,5],
+  locations:[
+    {id:"hitachi",name:"日立",lat:36.5906,lon:140.6560,note:"常磐線 日立駅周辺"},
+    {id:"iwaki",name:"いわき",lat:37.0587,lon:140.8936,note:"常磐線 いわき駅周辺"}
+  ],
+  forecast_days:11, scw_url:"https://supercweather.com/"
+};
+const WD = "日月火水木金土";
+const LABEL = {sun:"晴れ",partly:"晴れ間",cloudy:"薄日・曇り",overcast:"曇天",drizzle:"小雨",rain:"雨"};
+
+/* ---- 判定ロジック（notify.py と同じ） ---- */
+function effectiveCloud(l,m,h){l=l||0;m=m||0;h=h||0;
+  return 100*(1-(1-l/100)*(1-0.7*m/100)*(1-0.3*h/100));}
+function hourClass(l,m,h,p){
+  if(p!=null&&p>=0.5)return"rain";
+  if(p!=null&&p>=0.1)return"drizzle";
+  const e=effectiveCloud(l,m,h);
+  return e<30?"sun":e<60?"partly":e<85?"cloudy":"overcast";}
+function dayVerdict(classes,winds){
+  const n=c=>classes.filter(x=>x===c).length;
+  const sun=n("sun")+0.5*n("partly"), wet=n("rain")+0.5*n("drizzle");
+  let mark,label,tone;
+  if(wet>=3){mark="✕";label="雨";tone="bad";}
+  else if(sun>=5){mark="◎";label="晴れ";tone="good";}
+  else if(sun>=2){mark="○";label="晴れ間あり";tone="ok";}
+  else if(wet>=1){mark="△";label="曇り時々雨";tone="meh";}
+  else{mark="△";label="曇り（編成記録向き）";tone="meh";}
+  let best=[null,0],cur=0,start=null;
+  classes.forEach((c,i)=>{if(c==="sun"||c==="partly"){if(cur===0)start=i;cur++;if(cur>best[1])best=[start,cur];}else cur=0;});
+  return{mark,label,tone,sun,best,maxWind:Math.max(0,...winds)};}
+
+/* ---- 取得と描画 ---- */
+async function loadConfig(){
+  try{const r=await fetch("config.json",{cache:"no-store"});if(r.ok)return{...DEFAULT_CONFIG,...await r.json()};}catch(e){}
+  return DEFAULT_CONFIG;}
+async function fetchLoc(cfg,loc){
+  const q=new URLSearchParams({latitude:loc.lat,longitude:loc.lon,
+    hourly:"cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,wind_speed_10m",
+    daily:"sunrise,sunset",models:"jma_seamless",timezone:"Asia/Tokyo",wind_speed_unit:"ms",
+    forecast_days:cfg.forecast_days||11});
+  const r=await fetch("https://api.open-meteo.com/v1/forecast?"+q);
+  if(!r.ok)throw new Error(loc.name+"の予報を取得できませんでした（"+r.status+"）");
+  return r.json();}
+function wdOf(day){return new Date(day+"T00:00:00Z").getUTCDay();}
+function summarize(data,weekdays){
+  const h=data.hourly,d=data.daily,out={};
+  d.time.forEach((day,i)=>{
+    if(!weekdays.includes(wdOf(day)))return;
+    const rise=+d.sunrise[i].slice(11,13), set=+d.sunset[i].slice(11,13);
+    const idx=h.time.map((t,k)=>k).filter(k=>h.time[k].slice(0,10)===day&&+h.time[k].slice(11,13)>=rise&&+h.time[k].slice(11,13)<=set);
+    if(!idx.length||h.cloud_cover_low[idx[0]]==null)return;
+    const rows=idx.map(k=>({hour:+h.time[k].slice(11,13),low:h.cloud_cover_low[k],mid:h.cloud_cover_mid[k],high:h.cloud_cover_high[k],
+      p:h.precipitation[k],w:h.wind_speed_10m[k]||0}));
+    rows.forEach(r=>{r.cls=hourClass(r.low,r.mid,r.high,r.p);r.eff=effectiveCloud(r.low,r.mid,r.high);});
+    const v=dayVerdict(rows.map(r=>r.cls),rows.map(r=>r.w));
+    v.window=v.best[0]!=null?`${rows[v.best[0]].hour}–${rows[v.best[0]].hour+v.best[1]}時`:"";
+    out[day]={rows,...v};});
+  return out;}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const f0=v=>v==null?"–":Math.round(v);
+function renderLoc(loc,v){
+  const chips=[];
+  if(v.window&&(v.mark==="◎"||v.mark==="○"))chips.push(`<span class="chip">晴れ間 ${v.window}</span>`);
+  if(v.maxWind>=8)chips.push(`<span class="chip warn">最大風速 ${v.maxWind.toFixed(0)} m/s</span>`);
+  const cells=v.rows.map(r=>`<button class="cell" type="button" title="${r.hour}時 ${LABEL[r.cls]}／実効雲量${f0(r.eff)}%（低${f0(r.low)} 中${f0(r.mid)} 上${f0(r.high)}）降水${r.p??"–"}mm"><b class="c-${r.cls}"></b>${r.hour}</button>`).join("");
+  const table=`<table><tr><th>時</th><th>判定</th><th>低層</th><th>中層</th><th>上層</th><th>降水mm</th><th>風m/s</th></tr>`+
+    v.rows.map(r=>`<tr><td>${r.hour}</td><td>${LABEL[r.cls]}</td><td>${f0(r.low)}%</td><td>${f0(r.mid)}%</td><td>${f0(r.high)}%</td><td>${r.p??"–"}</td><td>${r.w.toFixed(1)}</td></tr>`).join("")+`</table>`;
+  return `<div class="loc">
+    <div class="loc-head"><span class="mark ${v.tone}">${v.mark}</span><span class="loc-name">${esc(loc.name)}</span>
+      <span class="verdict">${v.label}</span>${chips.join("")}</div>
+    <div class="strip-scroll"><div class="strip">${cells}</div></div>
+    <details><summary>時間別の数値</summary><div class="strip-scroll">${table}</div></details></div>`;}
+async function main(){
+  const cfg=await loadConfig();
+  document.getElementById("links").innerHTML=
+    `地点：${cfg.locations.map(l=>esc(l.name)+"（"+esc(l.note||"")+"）").join("、")}　／　休み：${cfg.weekdays.map(w=>WD[w]).join("・")}曜　／　<a href="${esc(cfg.scw_url)}" target="_blank" rel="noopener">SCWで雲量を確認</a>`;
+  const daysEl=document.getElementById("days");
+  try{
+    const results=await Promise.all(cfg.locations.map(async l=>[l,summarize(await fetchLoc(cfg,l),cfg.weekdays)]));
+    const days=[...new Set(results.flatMap(([,r])=>Object.keys(r)))].sort();
+    if(!days.length)daysEl.innerHTML=`<div class="empty">予報範囲（約11日）に休日がありません。</div>`;
+    else daysEl.innerHTML=days.map(day=>{
+      const [y,m,d]=day.split("-").map(Number);
+      return `<section class="day"><h2>${m}/${d}（${WD[wdOf(day)]}）<small>${daysAhead(day)}</small></h2>`+
+        results.filter(([,r])=>r[day]).map(([l,r])=>renderLoc(l,r[day])).join("")+`</section>`;}).join("");
+    const now=new Date();
+    document.getElementById("meta").textContent=`更新 ${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}　気象庁モデル`;
+  }catch(e){daysEl.innerHTML=`<div class="err">${esc(e.message)}。通信状況を確認して再読み込みしてください。</div>`;
+    document.getElementById("meta").textContent="取得失敗";}}
+function daysAhead(day){
+  const t=new Date();const today=Date.UTC(t.getFullYear(),t.getMonth(),t.getDate());
+  const n=Math.round((Date.parse(day+"T00:00:00Z")-today)/864e5);
+  const conf=n<=3?"信頼度 高（MSM）":n<=6?"信頼度 中":"信頼度 低・目安";
+  return (n===0?"今日":n===1?"明日":n+"日後")+"　"+conf;}
+main();
+</script>
+</body>
+</html>
