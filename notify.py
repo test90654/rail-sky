@@ -4,7 +4,8 @@
 GitHub Actions から毎日実行する想定。外部ライブラリ不要（標準ライブラリのみ）。
 環境変数:
   NTFY_TOPIC   ntfy のトピック名（必須ではないが通知に必要）
-  NTFY_SERVER  既定 https://ntfy.sh
+  NTFY_SERVER  既定 https://ntfy.sh（自前サーバーなら https://ntfy.example.com）
+  NTFY_TOKEN   （任意）自前サーバーでアクセス制御している場合のアクセストークン
   MAIL_TO, SMTP_USER, SMTP_PASS  （任意）Gmail 等でメール送信する場合
   DRY_RUN=1    送信せず標準出力に表示
 """
@@ -144,14 +145,16 @@ def send_ntfy(title, body, good):
     if not topic:
         print("NTFY_TOPIC 未設定のため ntfy 送信をスキップ")
         return
-    server = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+    server = (os.environ.get("NTFY_SERVER") or "https://ntfy.sh").rstrip("/")
     payload = {"topic": topic, "title": title, "message": body,
                "tags": ["sunny" if good else "cloud", "train"],
                "priority": 4 if good else 3}
     if CONFIG.get("dashboard_url"):
         payload["click"] = CONFIG["dashboard_url"]
-    req = urllib.request.Request(server, data=json.dumps(payload).encode("utf-8"),
-                                 headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if os.environ.get("NTFY_TOKEN"):  # アクセス制御付きの自前サーバー用
+        headers["Authorization"] = "Bearer " + os.environ["NTFY_TOKEN"]
+    req = urllib.request.Request(server, data=json.dumps(payload).encode("utf-8"), headers=headers)
     urllib.request.urlopen(req, timeout=30).read()
 
 

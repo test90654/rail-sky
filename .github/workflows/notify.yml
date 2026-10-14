@@ -17,6 +17,8 @@ jobs:
       - name: 予報を計算して通知
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
