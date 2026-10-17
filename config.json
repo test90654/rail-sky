@@ -6,6 +6,6 @@
     { "id": "iwaki",   "name": "いわき", "lat": 37.0587, "lon": 140.8936, "note": "常磐線 いわき駅周辺" }
   ],
   "forecast_days": 11,
-  "dashboard_url": "",
+  "dashboard_url": "https://test90654.github.io/rail-sky/",
   "scw_url": "https://supercweather.com/"
 }
