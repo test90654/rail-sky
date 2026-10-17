@@ -21,6 +21,20 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+_tp = HERE / "trains.json"
+TRAINS = json.loads(_tp.read_text(encoding="utf-8")) if _tp.exists() else None
+LABEL = {"sun": "晴れ", "partly": "晴れ間", "cloudy": "薄日", "overcast": "曇天",
+         "drizzle": "小雨", "rain": "雨"}
+
+
+def trains_at(station):
+    """指定駅を通る狙いの列車を (時刻, 列車) の時刻順で返す。"""
+    out = []
+    for t in (TRAINS or {}).get("trains", []):
+        for s in t["stops"]:
+            if s["st"] == station:
+                out.append((s["dep"] or s["arr"], t))
+    return sorted(out, key=lambda x: x[0])
 JST = dt.timezone(dt.timedelta(hours=9))
 WD = "月火水木金土日"  # Python weekday(): 0=月
 
@@ -109,6 +123,8 @@ def summarize(data, weekdays):
         winds = [h["wind_speed_10m"][k] or 0 for k in idx]
         v = day_verdict(classes, winds)
         hours = [int(h["time"][k][11:13]) for k in idx]
+        v["hours"] = dict(zip(hours, classes))
+        v["sun"] = (d["sunrise"][i][11:16], d["sunset"][i][11:16])
         if v["best"][0] is not None:
             s = hours[v["best"][0]]
             v["window"] = f"{s}–{s + v['best'][1]}時"
@@ -131,6 +147,16 @@ def build_message(results):
             extra = f" {v['window']}" if v["window"] and v["mark"] in "◎○" else ""
             wind = " 強風" if v["max_wind"] >= 8 else ""
             lines.append(f"  {loc['name']} {v['mark']} {v['label']}{extra}{wind}")
+            st = (TRAINS or {}).get("watch_stations", {}).get(loc["id"])
+            if st:
+                parts = []
+                for time, t in trains_at(st):
+                    lit = v["sun"][0] <= time <= v["sun"][1]
+                    c = v["hours"].get(int(time[:2])) if lit else None
+                    arrow = "↑" if t["dir"] == "上り" else "↓"
+                    parts.append(f"{arrow}{time}{LABEL[c] if c else '暗'}")
+                if parts:
+                    lines.append("   " + " ".join(parts))
     marks = [v["mark"] for r in results.values() for v in r.values()]
     title = "鉄道撮影予報"
     nearest = days[0] if days else None
