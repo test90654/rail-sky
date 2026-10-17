@@ -15,6 +15,8 @@ import os
 import smtplib
 import sys
 import urllib.parse
+import time
+import urllib.error
 import urllib.request
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -91,16 +93,30 @@ def day_verdict(classes, winds):
 
 
 # ---------- データ取得 ----------
-def fetch(loc):
+def fetch_all(locs):
+    """全地点を1回のリクエストで取得。429/5xx は待って最大4回まで再試行。"""
     q = {
-        "latitude": loc["lat"], "longitude": loc["lon"],
+        "latitude": ",".join(str(l["lat"]) for l in locs),
+        "longitude": ",".join(str(l["lon"]) for l in locs),
         "hourly": ",".join(HOURLY), "daily": "sunrise,sunset",
         "models": "jma_seamless", "timezone": "Asia/Tokyo",
         "wind_speed_unit": "ms", "forecast_days": CONFIG.get("forecast_days", 11),
     }
     url = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(q)
-    with urllib.request.urlopen(url, timeout=30) as r:
-        return json.load(r)
+    err = None
+    for wait in (0, 10, 30, 90):
+        time.sleep(wait)
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                data = json.load(r)
+            return data if isinstance(data, list) else [data]
+        except urllib.error.HTTPError as e:
+            err = e
+            if e.code != 429 and e.code < 500:
+                break
+        except (urllib.error.URLError, TimeoutError) as e:
+            err = e
+    raise RuntimeError(f"予報の取得に失敗しました: {err}")
 
 
 def summarize(data, weekdays):
@@ -198,7 +214,8 @@ def send_mail(title, body):
 
 def main():
     weekdays = set(CONFIG["weekdays"])
-    results = {loc["id"]: summarize(fetch(loc), weekdays) for loc in CONFIG["locations"]}
+    data = fetch_all(CONFIG["locations"])
+    results = {loc["id"]: summarize(d, weekdays) for loc, d in zip(CONFIG["locations"], data)}
     title, body, good = build_message(results)
     now = dt.datetime.now(JST).strftime("%m/%d %H:%M")
     body = f"{body}\n（{now} 気象庁モデル）"

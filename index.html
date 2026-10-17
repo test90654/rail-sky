@@ -149,14 +149,29 @@ function dayVerdict(classes,winds){
 async function loadConfig(){
   try{const r=await fetch("config.json",{cache:"no-store"});if(r.ok)return{...DEFAULT_CONFIG,...await r.json()};}catch(e){}
   return DEFAULT_CONFIG;}
-async function fetchLoc(cfg,loc){
-  const q=new URLSearchParams({latitude:loc.lat,longitude:loc.lon,
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+/* 全地点を1回のリクエストで取得。混雑時(429/5xx)は待って再試行し、だめなら前回の取得分を使う */
+async function fetchAll(cfg){
+  const L=cfg.locations;
+  const q=new URLSearchParams({latitude:L.map(l=>l.lat).join(","),longitude:L.map(l=>l.lon).join(","),
     hourly:"cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,wind_speed_10m",
     daily:"sunrise,sunset",models:"jma_seamless",timezone:"Asia/Tokyo",wind_speed_unit:"ms",
     forecast_days:cfg.forecast_days||11});
-  const r=await fetch("https://api.open-meteo.com/v1/forecast?"+q);
-  if(!r.ok)throw new Error(loc.name+"の予報を取得できませんでした（"+r.status+"）");
-  return r.json();}
+  const url="https://api.open-meteo.com/v1/forecast?"+q;
+  let last="";
+  for(const wait of [0,2000,5000,10000]){
+    if(wait){setMeta(`予報サーバーが混雑中。${wait/1000}秒後に再試行します…`);await sleep(wait);}
+    try{const r=await fetch(url);
+      if(r.ok){const j=await r.json();const arr=Array.isArray(j)?j:[j];
+        try{localStorage.setItem("wx-cache",JSON.stringify({at:Date.now(),key:url,data:arr}));}catch(e){}
+        return {data:arr,stale:null};}
+      last=String(r.status);if(r.status<429||(r.status>429&&r.status<500))break;
+    }catch(e){last="通信エラー";}
+  }
+  try{const c=JSON.parse(localStorage.getItem("wx-cache")||"null");
+    if(c&&c.key===url&&Date.now()-c.at<36*3600e3)return {data:c.data,stale:{at:c.at,why:last}};}catch(e){}
+  throw new Error(`予報を取得できませんでした（${last}）。予報サーバー（Open-Meteo）が混み合っています。数分おいて再読み込みしてください`);}
+function setMeta(t){document.getElementById("meta").textContent=t;}
 function wdOf(day){return new Date(day+"T00:00:00Z").getUTCDay();}
 function summarize(data,weekdays){
   const h=data.hourly,d=data.daily,out={};
@@ -217,16 +232,18 @@ async function main(){
     `地点：${cfg.locations.map(l=>esc(l.name)+"（"+esc(l.note||"")+"）").join("、")}　／　休み：${cfg.weekdays.map(w=>WD[w]).join("・")}曜　／　<a href="${esc(cfg.scw_url)}" target="_blank" rel="noopener">SCWで雲量を確認</a>`;
   const daysEl=document.getElementById("days");
   try{
-    const results=await Promise.all(cfg.locations.map(async l=>[l,summarize(await fetchLoc(cfg,l),cfg.weekdays)]));
+    const {data,stale}=await fetchAll(cfg);
+    const results=cfg.locations.map((l,i)=>[l,summarize(data[i],cfg.weekdays)]);
     const days=[...new Set(results.flatMap(([,r])=>Object.keys(r)))].sort();
     if(!days.length)daysEl.innerHTML=`<div class="empty">予報範囲（約11日）に休日がありません。</div>`;
     else daysEl.innerHTML=days.map(day=>{
       const [y,m,d]=day.split("-").map(Number);
       return `<section class="day"><h2>${m}/${d}（${WD[wdOf(day)]}）<small>${daysAhead(day)}</small></h2>`+
         results.filter(([,r])=>r[day]).map(([l,r])=>renderLoc(l,r[day])).join("")+`</section>`;}).join("");
-    const now=new Date();
-    document.getElementById("meta").textContent=`更新 ${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}　気象庁モデル`;
-  }catch(e){daysEl.innerHTML=`<div class="err">${esc(e.message)}。通信状況を確認して再読み込みしてください。</div>`;
+    const now=stale?new Date(stale.at):new Date();
+    const hm=`${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    setMeta(stale?`${hm} 取得分を表示中（最新の取得に失敗：${stale.why}）`:`更新 ${hm}　気象庁モデル`);
+  }catch(e){daysEl.innerHTML=`<div class="err">${esc(e.message)}。時刻表は上に表示しています。</div>`;
     document.getElementById("meta").textContent="取得失敗";}}
 function daysAhead(day){
   const t=new Date();const today=Date.UTC(t.getFullYear(),t.getMonth(),t.getDate());
