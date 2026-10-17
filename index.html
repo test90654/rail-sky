@@ -72,6 +72,23 @@ section.day{background:var(--panel);border:1px solid var(--line);border-radius:8
 .tt td.sec{text-align:left;color:var(--muted);white-space:normal}
 .tt .note{font-size:.78rem;color:var(--muted)}
 .tt .note a{color:var(--accent)}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs button{font:inherit;font-size:.85rem;padding:4px 12px;border:1px solid var(--line);border-radius:99px;background:var(--bg);color:var(--fg);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.vt-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.vt{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;width:max-content;min-width:100%}
+.vt th,.vt td{padding:3px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap;font-size:.88rem}
+.vt td{font-family:var(--f-board)}
+.vt thead th{background:var(--bg);font-weight:700;vertical-align:bottom;line-height:1.35}
+.vt thead th small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+.vt th.st{position:sticky;left:0;z-index:1;background:var(--panel);text-align:left;border-right:1px solid var(--line);font-weight:400}
+.vt thead th.st{background:var(--bg);z-index:2}
+.vt td.ar{color:var(--muted);font-size:.78rem;border-bottom-style:dotted}
+.vt td.na{color:var(--line)}
+.vt tr.watch th.st{font-weight:700;color:var(--accent)}
+.vt tr.watch td{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--fg)}
+.vt tr.watch td.ar{color:var(--muted)}
 .cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .c-sun{background:var(--sun)}.c-partly{background:var(--partly)}.c-cloudy{background:var(--cloudy)}
 .c-overcast{background:var(--overcast)}.c-drizzle{background:var(--drizzle)}.c-rain{background:var(--rain)}
@@ -192,18 +209,42 @@ async function loadTrains(){try{const r=await fetch("trains.json",{cache:"no-sto
 function timeAt(t,st){const s=t.stops.find(x=>x.st===st);return s?(s.dep||s.arr):null;}
 function trainsAt(st){if(!TRAINS)return[];return TRAINS.trains.map(t=>({t,time:timeAt(t,st)})).filter(x=>x.time).sort((a,b)=>a.time.localeCompare(b.time));}
 const STATIONS=()=>TRAINS?[...new Set(TRAINS.trains.find(t=>t.stops.length>18)?.stops.map(s=>s.st)||[])]:[];
+function stationOrder(list){
+  const order=[];
+  list.forEach(t=>{let prev=-1;t.stops.forEach(s=>{const i=order.indexOf(s.st);if(i<0){order.splice(prev+1,0,s.st);prev=prev+1;}else prev=i;});});
+  return order;}
+function verticalTable(dir,hl){
+  const list=TRAINS.trains.filter(t=>t.dir===dir).sort((a,b)=>(a.stops[0].dep||"").localeCompare(b.stops[0].dep||""));
+  if(!list.length)return "";
+  const order=stationOrder(list);
+  const watch=new Set(Object.values(TRAINS.watch_stations||{}).concat(hl?[hl]:[]));
+  const head=`<thead><tr><th class="st" scope="col">駅＼列車</th>${list.map(t=>`<th scope="col">${esc(t.no)}<small>${esc(t.unyo||"")}</small><small>${esc(t.to)}行</small></th>`).join("")}</tr></thead>`;
+  const body=order.map(st=>{
+    const cells=list.map(t=>t.stops.find(x=>x.st===st));
+    const mins=t=>+t.slice(0,2)*60+ +t.slice(3,5);
+    const longStop=c=>c&&c.arr&&c.dep&&mins(c.dep)-mins(c.arr)>=3;
+    const twoRows=cells.some(longStop);
+    const cls=watch.has(st)?' class="watch"':"";
+    if(twoRows){
+      const a=cells.map(c=>c?(longStop(c)?`<td class="ar">${c.arr}着</td>`:`<td class="ar"></td>`):`<td class="ar na">‥</td>`).join("");
+      const d=cells.map(c=>c?`<td>${c.dep||c.arr+"着"}</td>`:`<td class="na">‥</td>`).join("");
+      return `<tr${cls}><th class="st" scope="row" rowspan="2">${esc(st)}</th>${a}</tr><tr${cls}>${d}</tr>`;}
+    return `<tr${cls}><th class="st" scope="row">${esc(st)}</th>${cells.map(c=>c?`<td>${c.dep||(c.arr+"着")}</td>`:`<td class="na">‥</td>`).join("")}</tr>`;}).join("");
+  return `<div><h3>${dir==="上り"?"上り　いわき → 水戸":"下り　水戸 → いわき"}</h3><div class="vt-wrap"><table class="vt">${head}<tbody>${body}</tbody></table></div></div>`;}
 function renderTimetable(){
   const el=document.getElementById("tt");if(!TRAINS){el.hidden=true;return;}
-  let st="日立";try{st=localStorage.getItem("tt-station")||st;}catch(e){}
+  let st="日立",view="station";try{st=localStorage.getItem("tt-station")||st;view=localStorage.getItem("tt-view")||view;}catch(e){}
   const opts=STATIONS().map(s=>`<option${s===st?" selected":""}>${esc(s)}</option>`).join("");
   const col=dir=>{const list=trainsAt(st).filter(x=>x.t.dir===dir);
     return `<div><h3>${dir==="上り"?"上り　水戸方面":"下り　いわき方面"}</h3><table>`+
     (list.length?list.map(({t,time})=>{const s=t.stops.find(x=>x.st===st);const pass=s.arr&&s.dep&&s.arr!==s.dep?`<br><span class="note">${s.arr}着</span>`:"";
       return `<tr><td class="t">${time}${pass}</td><td class="no">${esc(t.no)}${t.unyo?`<br><span class="note">${esc(t.unyo)}</span>`:""}</td><td class="sec">${esc(t.from)}→${esc(t.to)}</td></tr>`;}).join(""):`<tr><td class="sec">この駅に停まる列車はありません</td></tr>`)+`</table></div>`;};
-  el.innerHTML=`<h2>${esc(TRAINS.series)} の時刻 <label>駅 <select id="tt-station">${opts}</select></label><small>平日・土休日とも同時刻</small></h2>
-    <div class="tt-cols">${col("上り")}${col("下り")}</div>
+  const tab=(id,label)=>`<button type="button" role="tab" id="tab-${id}" aria-selected="${view===id}" data-view="${id}">${label}</button>`;
+  el.innerHTML=`<h2>${esc(TRAINS.series)} の時刻 <span class="tabs" role="tablist">${tab("station","駅別")}${tab("vertical","縦型（全駅）")}</span><label>駅 <select id="tt-station">${opts}</select></label><small>平日・土休日とも同時刻</small></h2>
+    ${view==="vertical"?`<div style="display:grid;gap:14px">${verticalTable("上り",st)}${verticalTable("下り",st)}</div>`:`<div class="tt-cols">${col("上り")}${col("下り")}</div>`}
     <div class="note">${esc(TRAINS.source)} ${TRAINS.unyo_note?esc(TRAINS.unyo_note)+"。":""}代走（E531系）や検査で別の車両が来る日もあります。${(TRAINS.check_links||[]).map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join("　")}</div>`;
   el.hidden=false;
+  el.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{try{localStorage.setItem("tt-view",b.dataset.view);}catch(_){}renderTimetable();}));
   document.getElementById("tt-station").addEventListener("change",e=>{try{localStorage.setItem("tt-station",e.target.value);}catch(_){}renderTimetable();});}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const f0=v=>v==null?"–":Math.round(v);
