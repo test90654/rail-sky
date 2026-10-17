@@ -13,6 +13,7 @@
   --accent:#0a5cad;            /* 常磐線ブルー寄り */
   --board:#10161d; --board-fg:#ffb23e;
   --sun:#f2b705; --partly:#f7dc7a; --cloudy:#b9c4cf; --overcast:#7f8c99; --drizzle:#7fb2e0; --rain:#2f6fb7;
+  --ex:#c8661a; --lc:#8a96a3;
   --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
   --f-board:"DotGothic16","BIZ UDPGothic",monospace;
   color-scheme:light;
@@ -20,6 +21,7 @@
 @media (prefers-color-scheme:dark){:root{
   --bg:#0f141a; --panel:#18202a; --fg:#e6ecf2; --muted:#93a1b0; --line:#2a3542;
   --accent:#5aa2ec; --board:#05080b; --board-fg:#ffb23e;
+  --ex:#f0a35a; --lc:#7d8a97;
   --partly:#c9ad4a; --cloudy:#5d6a77; --overcast:#3d4752; --drizzle:#4f86ba; --rain:#2c5f9c;
   color-scheme:dark;
 }}
@@ -89,6 +91,15 @@ section.day{background:var(--panel);border:1px solid var(--line);border-radius:8
 .vt tr.watch th.st{font-weight:700;color:var(--accent)}
 .vt tr.watch td{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--fg)}
 .vt tr.watch td.ar{color:var(--muted)}
+.dg-bar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:.8rem;color:var(--muted)}
+.dg-bar i{display:inline-block;width:18px;height:0;border-top:3px solid;vertical-align:middle;margin-right:4px}
+.dg{display:flex;border:1px solid var(--line);border-radius:6px;background:var(--panel);overflow:hidden}
+.dg-labels{flex:0 0 auto;border-right:1px solid var(--line);background:var(--panel)}
+.dg-scroll{flex:1 1 auto;min-width:0;overflow-x:auto}
+.dg svg text{font-family:var(--f-body)}
+.dg .hit{stroke:transparent;stroke-width:12;fill:none;cursor:pointer}
+.dg-info{min-height:1.6em;font-size:.88rem;font-variant-numeric:tabular-nums}
+.dg-info b{color:var(--accent)}
 .cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .c-sun{background:var(--sun)}.c-partly{background:var(--partly)}.c-cloudy{background:var(--cloudy)}
 .c-overcast{background:var(--overcast)}.c-drizzle{background:var(--drizzle)}.c-rain{background:var(--rain)}
@@ -231,6 +242,50 @@ function verticalTable(dir,hl){
       return `<tr${cls}><th class="st" scope="row" rowspan="2">${esc(st)}</th>${a}</tr><tr${cls}>${d}</tr>`;}
     return `<tr${cls}><th class="st" scope="row">${esc(st)}</th>${cells.map(c=>c?`<td>${c.dep||(c.arr+"着")}</td>`:`<td class="na">‥</td>`).join("")}</tr>`;}).join("");
   return `<div><h3>${dir==="上り"?"上り　いわき → 水戸":"下り　水戸 → いわき"}</h3><div class="vt-wrap"><table class="vt">${head}<tbody>${body}</tbody></table></div></div>`;}
+let DIAG=null;
+async function loadDiagram(){if(DIAG)return DIAG;try{const r=await fetch("diagram.json",{cache:"no-store"});if(r.ok)DIAG=await r.json();}catch(e){}return DIAG;}
+const hm=m=>`${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`;
+async function renderDiagram(hl){
+  const host=document.getElementById("dg-host");const D=await loadDiagram();
+  if(!host)return;
+  if(!D){host.innerHTML=`<div class="note">ダイヤグラムのデータを読み込めませんでした。再読み込みしてください。</div>`;return;}
+  let win=D.windows[0].id;try{win=localStorage.getItem("dg-win")||win;}catch(e){}
+  const W=D.windows.find(w=>w.id===win)||D.windows[0];
+  const S=D.stations,k0=S[0].km,k1=S[S.length-1].km;
+  const PPM=5,TOP=22,BOT=10,PH=600,H=TOP+PH+BOT,WID=(W.to-W.from)*PPM;
+  const y=km=>TOP+(km-k0)/(k1-k0)*PH, x=t=>(t-W.from)*PPM;
+  const watch=new Set(Object.values(TRAINS?.watch_stations||{}).concat(hl?[hl]:[]));
+  let g="";
+  for(let t=Math.ceil(W.from/10)*10;t<=W.to;t+=10){const hr=t%60===0;
+    g+=`<line x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP+PH}" stroke="var(${hr?"--muted":"--line"})" stroke-width="${hr?1:.6}"${t%30===0&&!hr?' stroke-dasharray="3 3"':""}/>`;
+    if(hr)g+=`<text x="${x(t)+3}" y="14" font-size="12" fill="var(--fg)">${t/60}時</text>`;
+    else if(t%30===0)g+=`<text x="${x(t)+3}" y="14" font-size="10" fill="var(--muted)">${String(t%60)}</text>`;}
+  S.forEach(st=>{g+=`<line x1="0" x2="${WID}" y1="${y(st.km)}" y2="${y(st.km)}" stroke="var(${watch.has(st.name)?"--accent":"--line"})" stroke-width="${watch.has(st.name)?1.2:.6}"${watch.has(st.name)?' stroke-opacity=".6"':""}/>`;});
+  const style={e501:["var(--accent)",2.8],ex:["var(--ex)",1.4],lc:["var(--lc)",1]};
+  const order={lc:0,ex:1,e501:2};
+  let lines="",hits="",labels="";
+  [...D.trains].sort((a,b)=>order[a.kind]-order[b.kind]).forEach((t,i)=>{
+    const pts=[];t.s.forEach(([si,a,d])=>{const yy=y(S[si].km);if(a!=null)pts.push([a,yy]);if(d!=null)pts.push([d,yy]);});
+    if(pts.length<2||pts[pts.length-1][0]<W.from||pts[0][0]>W.to)return;
+    const dpath="M"+pts.map(([t2,yy])=>`${x(t2).toFixed(1)},${yy.toFixed(1)}`).join("L");
+    const [c,w]=style[t.kind];
+    lines+=`<path d="${dpath}" fill="none" stroke="${c}" stroke-width="${w}"${t.rinji?' stroke-dasharray="5 3"':""} stroke-linejoin="round"/>`;
+    hits+=`<path class="hit" d="${dpath}" data-no="${esc(t.no)}"><title>${esc(t.no)} ${esc(t.name||"")}</title></path>`;
+    if(t.kind!=="lc"){const p=pts.find(([t2])=>t2>=W.from)||pts[0];const lx=Math.max(2,x(p[0])+3),ly=p[1]+(t.dir==="上り"?-4:12);
+      labels+=`<text x="${lx}" y="${ly}" font-size="${t.kind==="e501"?12:10}" font-weight="${t.kind==="e501"?700:400}" fill="${c}" paint-order="stroke" stroke="var(--panel)" stroke-width="3">${esc(t.no)}</text>`;}});
+  const lab=S.map(st=>`<text x="58" y="${y(st.km)+4}" font-size="11" text-anchor="end" fill="var(${watch.has(st.name)?"--accent":"--fg"})" font-weight="${watch.has(st.name)?700:400}">${esc(st.name)}</text>`).join("");
+  const btn=w=>`<button type="button" data-win="${w.id}" aria-selected="${w.id===W.id}">${esc(w.label)}</button>`;
+  host.innerHTML=`<div class="dg-bar"><span class="tabs">${D.windows.map(btn).join("")}</span>
+      <span><i style="border-color:var(--accent)"></i>E501系</span><span><i style="border-color:var(--ex);border-top-width:2px"></i>特急</span><span><i style="border-color:var(--lc);border-top-width:1px"></i>普通（E531系など）</span><span><i style="border-color:var(--lc);border-top-style:dashed;border-top-width:2px"></i>臨時・運転日注意</span></div>
+    <div class="dg"><div class="dg-labels"><svg width="62" height="${H}" viewBox="0 0 62 ${H}" role="presentation">${lab}</svg></div>
+      <div class="dg-scroll"><svg width="${WID}" height="${H}" viewBox="0 0 ${WID} ${H}" role="img" aria-label="水戸〜草野間のダイヤグラム ${esc(W.label)}"><defs><clipPath id="dgc"><rect x="0" y="0" width="${WID}" height="${H}"/></clipPath></defs><g clip-path="url(#dgc)">${g}${lines}${labels}${hits}</g></svg></div></div>
+    <div class="dg-info" id="dg-info">線をタップすると列車の情報が出ます。</div>
+    <div class="note">${esc(D.source)}</div>`;
+  host.querySelectorAll("[data-win]").forEach(b=>b.addEventListener("click",()=>{try{localStorage.setItem("dg-win",b.dataset.win);}catch(_){}renderDiagram(hl);}));
+  host.querySelector(".dg-scroll svg").addEventListener("click",e=>{const p=e.target.closest(".hit");if(!p)return;const t=D.trains.find(x=>x.no===p.dataset.no);if(!t)return;
+    const first=t.s[0],last=t.s[t.s.length-1];const at=t.s.find(([si])=>S[si].name===hl)||t.s.find(([si])=>watch.has(S[si].name));
+    document.getElementById("dg-info").innerHTML=`<b>${esc(t.no)}</b> ${esc(t.name||(t.kind==="e501"?"普通（E501系）":"普通"))}　${esc(S[first[0]].name)} ${hm(first[2]??first[1])} → ${esc(S[last[0]].name)} ${hm(last[1]??last[2])}${at?`　／ ${esc(S[at[0]].name)} ${hm(at[2]??at[1])}`:""}${t.rinji?"　（臨時・運転日注意）":""}`;});
+}
 function renderTimetable(){
   const el=document.getElementById("tt");if(!TRAINS){el.hidden=true;return;}
   let st="日立",view="station";try{st=localStorage.getItem("tt-station")||st;view=localStorage.getItem("tt-view")||view;}catch(e){}
@@ -240,10 +295,11 @@ function renderTimetable(){
     (list.length?list.map(({t,time})=>{const s=t.stops.find(x=>x.st===st);const pass=s.arr&&s.dep&&s.arr!==s.dep?`<br><span class="note">${s.arr}着</span>`:"";
       return `<tr><td class="t">${time}${pass}</td><td class="no">${esc(t.no)}${t.unyo?`<br><span class="note">${esc(t.unyo)}</span>`:""}</td><td class="sec">${esc(t.from)}→${esc(t.to)}</td></tr>`;}).join(""):`<tr><td class="sec">この駅に停まる列車はありません</td></tr>`)+`</table></div>`;};
   const tab=(id,label)=>`<button type="button" role="tab" id="tab-${id}" aria-selected="${view===id}" data-view="${id}">${label}</button>`;
-  el.innerHTML=`<h2>${esc(TRAINS.series)} の時刻 <span class="tabs" role="tablist">${tab("station","駅別")}${tab("vertical","縦型（全駅）")}</span><label>駅 <select id="tt-station">${opts}</select></label><small>平日・土休日とも同時刻</small></h2>
-    ${view==="vertical"?`<div style="display:grid;gap:14px">${verticalTable("上り",st)}${verticalTable("下り",st)}</div>`:`<div class="tt-cols">${col("上り")}${col("下り")}</div>`}
+  el.innerHTML=`<h2>${esc(TRAINS.series)} の時刻 <span class="tabs" role="tablist">${tab("station","駅別")}${tab("vertical","縦型（全駅）")}${tab("diagram","ダイヤグラム")}</span><label>駅 <select id="tt-station">${opts}</select></label><small>平日・土休日とも同時刻</small></h2>
+    ${view==="diagram"?`<div id="dg-host" style="display:grid;gap:8px"><div class="note">ダイヤグラムを読み込んでいます…</div></div>`:view==="vertical"?`<div style="display:grid;gap:14px">${verticalTable("上り",st)}${verticalTable("下り",st)}</div>`:`<div class="tt-cols">${col("上り")}${col("下り")}</div>`}
     <div class="note">${esc(TRAINS.source)} ${TRAINS.unyo_note?esc(TRAINS.unyo_note)+"。":""}代走（E531系）や検査で別の車両が来る日もあります。${(TRAINS.check_links||[]).map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join("　")}</div>`;
   el.hidden=false;
+  if(view==="diagram")renderDiagram(st);
   el.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{try{localStorage.setItem("tt-view",b.dataset.view);}catch(_){}renderTimetable();}));
   document.getElementById("tt-station").addEventListener("change",e=>{try{localStorage.setItem("tt-station",e.target.value);}catch(_){}renderTimetable();});}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
