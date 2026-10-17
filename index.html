@@ -184,10 +184,10 @@ function renderTimetable(){
   const col=dir=>{const list=trainsAt(st).filter(x=>x.t.dir===dir);
     return `<div><h3>${dir==="上り"?"上り　水戸方面":"下り　いわき方面"}</h3><table>`+
     (list.length?list.map(({t,time})=>{const s=t.stops.find(x=>x.st===st);const pass=s.arr&&s.dep&&s.arr!==s.dep?`<br><span class="note">${s.arr}着</span>`:"";
-      return `<tr><td class="t">${time}${pass}</td><td class="no">${esc(t.no)}</td><td class="sec">${esc(t.from)}→${esc(t.to)}</td></tr>`;}).join(""):`<tr><td class="sec">この駅に停まる列車はありません</td></tr>`)+`</table></div>`;};
+      return `<tr><td class="t">${time}${pass}</td><td class="no">${esc(t.no)}${t.unyo?`<br><span class="note">${esc(t.unyo)}</span>`:""}</td><td class="sec">${esc(t.from)}→${esc(t.to)}</td></tr>`;}).join(""):`<tr><td class="sec">この駅に停まる列車はありません</td></tr>`)+`</table></div>`;};
   el.innerHTML=`<h2>${esc(TRAINS.series)} の時刻 <label>駅 <select id="tt-station">${opts}</select></label><small>平日・土休日とも同時刻</small></h2>
     <div class="tt-cols">${col("上り")}${col("下り")}</div>
-    <div class="note">${esc(TRAINS.source)} 代走（E531系）で別の車両が来る日もあります。${(TRAINS.check_links||[]).map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join("　")}</div>`;
+    <div class="note">${esc(TRAINS.source)} ${TRAINS.unyo_note?esc(TRAINS.unyo_note)+"。":""}代走（E531系）や検査で別の車両が来る日もあります。${(TRAINS.check_links||[]).map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a>`).join("　")}</div>`;
   el.hidden=false;
   document.getElementById("tt-station").addEventListener("change",e=>{try{localStorage.setItem("tt-station",e.target.value);}catch(_){}renderTimetable();});}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
